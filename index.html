@@ -148,10 +148,15 @@
 
   <!-- 6. プレビュー＆出力 -->
   <section class="card">
-    <div class="flex items-center justify-between mb-3">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
       <h2 class="text-lg font-bold">⑥ プレビュー＆下書き作成</h2>
-      <button id="previewBtn" class="btn btn-secondary">🔄 プレビュー更新</button>
+      <div class="flex flex-wrap gap-2">
+        <button id="previewBtn" class="btn btn-secondary">🔄 プレビュー更新</button>
+        <button id="bulkWebBtn" class="btn btn-outlook">🌐 全件 Web版Outlookで開く</button>
+        <button id="bulkEmlBtn" class="btn btn-primary">📨 全件 .eml ダウンロード</button>
+      </div>
     </div>
+    <p class="text-xs text-slate-500 mb-3">※「全件 Web版Outlookで開く」を初めて押したときはブラウザの「ポップアップ許可」が出るので、許可してください。</p>
     <div id="previewArea" class="space-y-4"></div>
   </section>
 
@@ -508,7 +513,7 @@ function renderPreview() {
     const card = document.createElement("div");
     card.className = "border border-slate-200 rounded-lg overflow-hidden";
     card.innerHTML = `
-      <details ${i===0?"open":""}>
+      <details open>
         <summary class="bg-slate-100 px-3 py-2 flex justify-between items-center">
           <span class="font-semibold">${i+1}. ${esc(g.company)}</span>
           <span class="text-xs text-slate-500">▼</span>
@@ -533,6 +538,31 @@ function renderPreview() {
   area.querySelectorAll(".act-copy").forEach(b => b.addEventListener("click", () => actCopy(groups[+b.dataset.idx])));
 }
 document.getElementById("previewBtn").addEventListener("click", renderPreview);
+
+// 一括処理
+document.getElementById("bulkEmlBtn").addEventListener("click", () => {
+  refreshSubjectIfEmpty();
+  const items = getItems();
+  if (items.length === 0) { alert("商品を入力してください。"); return; }
+  const groups = getSelectedByCompany();
+  if (groups.length === 0) { alert("宛先を1社以上選択してください。"); return; }
+  if (!confirm(`${groups.length} 件分の .eml ファイルをダウンロードします。よろしいですか？`)) return;
+  const subj = document.getElementById("subject").value.trim() || autoSubject(items);
+  groups.forEach((g, i) => setTimeout(() => actEml(g, subj), i * 200));
+  renderPreview();
+});
+
+document.getElementById("bulkWebBtn").addEventListener("click", () => {
+  refreshSubjectIfEmpty();
+  const items = getItems();
+  if (items.length === 0) { alert("商品を入力してください。"); return; }
+  const groups = getSelectedByCompany();
+  if (groups.length === 0) { alert("宛先を1社以上選択してください。"); return; }
+  if (!confirm(`${groups.length} 件分の Outlook 下書きを新しいタブで開きます。\n初回はブラウザの「ポップアップ許可」が必要です。`)) return;
+  const subj = document.getElementById("subject").value.trim() || autoSubject(items);
+  groups.forEach((g, i) => setTimeout(() => actWeb(g, subj), i * 300));
+  renderPreview();
+});
 
 // =========================================================
 // 出力アクション
