@@ -638,9 +638,8 @@ function normalizeWebBase(value) {
   } catch { return ""; }
 }
 function buildWebUrl(me, to, subject, body) {
-  const base = normalizeWebBase(me.webUrl);
-  const params = qs({to, subject, body});
-  return base ? base + "/?path=/mail/action/compose&" + params : CLOUD_MAIL + "deeplink/compose?" + params;
+  const params = qs({ to, subject, body });
+  return "https://outlook.cloud.microsoft/mail/deeplink/compose?" + params;
 }
 
 function actWeb(group, subject, bulk = false) {
