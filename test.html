@@ -637,23 +637,43 @@ function actWeb(group, subject, bulk = false) {
   const me = getMe();
   const body = buildBody(group);
   const to = group.recipients.map(r => r.email).join(";");
-  const full = buildWebUrl(me, to, subject, body);
-  const long = full.length > 1900;
-  const tab = window.open("", "_blank");
+  const fullUrl = buildWebUrl(me, to, subject, body);
+  const needsPaste = fullUrl.length > 1900;
+
+  // 個別に開くときは、元のタブにいる間に本文のコピーを開始する
+  let copyResult;
+  if (!bulk) {
+    try {
+      copyResult = navigator.clipboard.writeText(body).then(
+        () => true,
+        () => false
+      );
+    } catch {
+      copyResult = Promise.resolve(false);
+    }
+  }
+
+  const url = needsPaste ? buildWebUrl(me, to, subject, "") : fullUrl;
+  const tab = window.open(url, "_blank");
   if (!tab) {
-    alert(group.company + " の下書きを開けませんでした。ポップアップを許可するか、プレビューから個別に開いてください。");
+    alert("Outlookを開けませんでした。ポップアップを許可してください。");
     return;
   }
   tab.opener = null;
-  tab.location.replace(long ? buildWebUrl(me, to, subject, "") : full);
   logEntry("web", group, subject, getItems());
-  if (!long) return;
-  const manual = group.company + " の本文は、プレビューからコピーして下書きに貼り付けてください。";
-  if (bulk || !navigator.clipboard) { alert(manual); return; }
-  navigator.clipboard.writeText(body).then(
-    () => alert(group.company + " の本文をコピーしました。下書きに貼り付けてください。"),
-    () => alert(manual)
-  );
+
+  if (bulk) {
+    if (needsPaste) {
+      alert(group.company + " の本文は、プレビューからコピーしてください。");
+    }
+    return;
+  }
+
+  copyResult.then(copied => {
+    if (!copied) {
+      window.prompt("自動コピーできませんでした。本文を Ctrl+A → Ctrl+C でコピーしてください。", body);
+    }
+  });
 }
 
 function actMailto(group, subject) {
