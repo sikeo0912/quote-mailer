@@ -33,7 +33,7 @@
       <h1 class="text-2xl font-bold">見積もり依頼メール 作成システム <span class="text-sm font-normal bg-amber-200 text-amber-900 px-2 py-1 rounded ml-1">🧪 テスト版（履歴機能あり）</span></h1>
       <p class="text-sm text-slate-500 mt-1">商品を入力 → 宛先を選択 → Outlook（デスクトップ / Web）で下書きを作成</p>
     </div>
-    <div class="text-xs text-slate-400">v3.0-test</div>
+    <div class="text-xs text-slate-400">v3.1-test</div>
   </header>
 
   <!-- 1. 宛先データ管理 -->
@@ -140,8 +140,8 @@
       <div class="md:col-span-2"><label class="label">住所</label><input id="meAddr" class="inp me-field"></div>
       <div class="md:col-span-2">
         <label class="label">Web版Outlook URL（任意）</label>
-        <input id="meWebUrl" class="inp me-field" placeholder="例：https://webmail.omu.ac.jp/owa/   （空欄なら outlook.office.com を使用）" />
-        <p class="text-xs text-slate-500 mt-1">大学独自の Outlook Web (OWA) を使っている場合はここに入力（末尾の / は省略可）。例：大阪公立大 → <code>https://webmail.omu.ac.jp/owa/</code></p>
+        <input id="meWebUrl" class="inp me-field" placeholder="空欄なら大学の Microsoft 365 を使用" />
+        <p class="text-xs text-slate-500 mt-1">大阪公立大学では空欄で使用できます。他の組織の OWA を使用する場合は、そのベースURLを入力してください。</p>
       </div>
     </div>
   </section>
@@ -178,10 +178,10 @@
     <h3 class="font-bold text-amber-800 mb-2">💡 メールの開き方 — 3つの方法</h3>
     <ul class="text-sm text-amber-900 space-y-1 list-disc list-inside">
       <li><b>📨 .eml ダウンロード</b>：Outlook デスクトップ版 推奨。ダブルクリックで「下書き」として開く（<code>X-Unsent: 1</code> 付き）</li>
-      <li><b>🌐 Web版Outlookで開く</b>：<code>outlook.office.com</code> のブラウザ新規メール画面が新しいタブで開く（事前にログイン推奨）</li>
+      <li><b>🌐 Web版Outlookで開く</b>：Web版Outlook のブラウザ新規メール画面が新しいタブで開く（事前にログイン推奨）</li>
       <li><b>📧 mailto: で開く</b>：OS の既定メールアプリを起動（Outlook が既定なら Outlook で開く）</li>
     </ul>
-    <p class="text-xs text-amber-700 mt-2">※ 本文が非常に長い場合（URL 1900 文字超）、Web版/mailto は本文を自動でクリップボードにコピーし、空メール画面を開くので「貼り付け」してください。</p>
+    <p class="text-xs text-amber-700 mt-2">※ 本文が非常に長い場合（URL 1900 文字超）、Web版/mailto は本文を自動でクリップボードにコピーし、下書きを開くので「貼り付け」してください。一括作成時の長い本文は、各社のプレビューから個別にコピーしてください。</p>
   </section>
 
 </div>
@@ -205,6 +205,15 @@ function loadContacts() {
   try {
     const s = localStorage.getItem(LS_CONTACTS);
     if (s) contacts = JSON.parse(s);
+    const marker = "quote_mailer_added_toyoda_v1";
+    if (!localStorage.getItem(marker)) {
+      const email = "m-toyoda@takeuchikagaku.jp";
+      if (!contacts.some(c => c.email.trim().toLowerCase() === email)) {
+        contacts.push({company: "竹内化学", dept: "", name: "豊田", hon: "様", email, note: ""});
+        localStorage.setItem(LS_CONTACTS, JSON.stringify(contacts));
+      }
+      localStorage.setItem(marker, "1");
+    }
   } catch(e) { console.warn(e); }
   rebuildCompanyMap();
 }
@@ -218,6 +227,7 @@ function loadSender() {
     if (s) {
       const me = JSON.parse(s);
       setSenderFields(me);
+      if (me.webUrl !== getMe().webUrl) saveSender();
     }
   } catch(e) { console.warn(e); }
 }
@@ -444,7 +454,7 @@ function getMe() {
     lab: meLab.value.trim(), role: meRole.value.trim(),
     name: meName.value.trim(), email: meEmail.value.trim(),
     tel: meTel.value.trim(), zip: meZip.value.trim(), addr: meAddr.value.trim(),
-    webUrl: meWebUrl.value.trim(),
+    webUrl: normalizeWebBase(meWebUrl.value),
   };
 }
 function setSenderFields(me) {
@@ -452,7 +462,7 @@ function setSenderFields(me) {
   set("meUniversity", me.university); set("meFaculty", me.faculty); set("meLab", me.lab);
   set("meRole", me.role); set("meName", me.name); set("meEmail", me.email);
   set("meTel", me.tel); set("meZip", me.zip); set("meAddr", me.addr);
-  set("meWebUrl", me.webUrl);
+  if (me.webUrl !== undefined) set("meWebUrl", normalizeWebBase(me.webUrl));
 }
 
 // =========================================================
@@ -575,7 +585,7 @@ document.getElementById("bulkWebBtn").addEventListener("click", () => {
   if (groups.length === 0) { alert("宛先を1社以上選択してください。"); return; }
   if (!confirm(`${groups.length} 件分の Outlook 下書きを新しいタブで開きます。\n初回はブラウザの「ポップアップ許可」が必要です。`)) return;
   const subj = document.getElementById("subject").value.trim() || autoSubject(items);
-  groups.forEach((g, i) => setTimeout(() => actWeb(g, subj), i * 300));
+  groups.forEach(g => actWeb(g, subj, groups.length > 1));
   renderPreview();
 });
 
@@ -617,38 +627,43 @@ function qs(params) {
 }
 
 // Outlook Web の compose URL を生成（OWA か Microsoft 365 か自動判別）
+const CLOUD_MAIL = "https://outlook.cloud.microsoft/mail/";
+function normalizeWebBase(value) {
+  if (!value || !value.trim()) return "";
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "https:" || url.username || url.password) return "";
+    if (["webmail.omu.ac.jp", "outlook.office.com", "outlook.office365.com", "outlook.cloud.microsoft"].includes(url.hostname)) return "";
+    return url.origin + url.pathname.replace(/\/+$/, "");
+  } catch { return ""; }
+}
 function buildWebUrl(me, to, subject, body) {
-  const custom = (me.webUrl || "").trim();
-  if (custom) {
-    // 大学独自 OWA：例 https://webmail.omu.ac.jp/owa/
-    let base = custom.replace(/\/+$/, "");
-    const params = qs({ to, subject, body });
-    return `${base}/?path=/mail/action/compose&${params}`;
-  } else {
-    // Microsoft 365 outlook.office.com（アカウント指定付き）
-    const accountPath = me.email ? `${me.email}/` : "";
-    return `https://outlook.office.com/mail/${accountPath}deeplink/compose?${qs({to, subject, body})}`;
-  }
+  const base = normalizeWebBase(me.webUrl);
+  const params = qs({to, subject, body});
+  return base ? base + "/?path=/mail/action/compose&" + params : CLOUD_MAIL + "deeplink/compose?" + params;
 }
 
-function actWeb(group, subject) {
+function actWeb(group, subject, bulk = false) {
   const me = getMe();
   const body = buildBody(group);
-  logEntry("web", group, subject, getItems());
-  // 全員を宛先（To）に。;区切りは Outlook が認識
   const to = group.recipients.map(r => r.email).join(";");
-
-  if (!me.webUrl && !me.email) {
-    alert("送信元メールアドレス（⑤ 送信元情報）を入力すると、Outlook Web で正しいアカウントを開けます。");
-  }
-
   const full = buildWebUrl(me, to, subject, body);
-  if (full.length <= 1900) { window.open(full, "_blank"); return; }
-  // 本文が長すぎる場合：本文をクリップボードへ
-  navigator.clipboard.writeText(body).then(() => {
-    alert("本文が長いため、本文をクリップボードにコピーしました。\n開いた新規メール画面に貼り付けてください。");
-    window.open(buildWebUrl(me, to, subject, ""), "_blank");
-  });
+  const long = full.length > 1900;
+  const tab = window.open("", "_blank");
+  if (!tab) {
+    alert(group.company + " の下書きを開けませんでした。ポップアップを許可するか、プレビューから個別に開いてください。");
+    return;
+  }
+  tab.opener = null;
+  tab.location.replace(long ? buildWebUrl(me, to, subject, "") : full);
+  logEntry("web", group, subject, getItems());
+  if (!long) return;
+  const manual = group.company + " の本文は、プレビューからコピーして下書きに貼り付けてください。";
+  if (bulk || !navigator.clipboard) { alert(manual); return; }
+  navigator.clipboard.writeText(body).then(
+    () => alert(group.company + " の本文をコピーしました。下書きに貼り付けてください。"),
+    () => alert(manual)
+  );
 }
 
 function actMailto(group, subject) {
