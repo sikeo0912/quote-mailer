@@ -205,15 +205,6 @@ function loadContacts() {
   try {
     const s = localStorage.getItem(LS_CONTACTS);
     if (s) contacts = JSON.parse(s);
-    const marker = "quote_mailer_added_toyoda_v1";
-    if (!localStorage.getItem(marker)) {
-      const email = "m-toyoda@takeuchikagaku.jp";
-      if (!contacts.some(c => c.email.trim().toLowerCase() === email)) {
-        contacts.push({company: "竹内化学", dept: "", name: "豊田", hon: "様", email, note: ""});
-        localStorage.setItem(LS_CONTACTS, JSON.stringify(contacts));
-      }
-      localStorage.setItem(marker, "1");
-    }
   } catch(e) { console.warn(e); }
   rebuildCompanyMap();
 }
